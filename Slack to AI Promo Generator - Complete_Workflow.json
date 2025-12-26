@@ -1,0 +1,1173 @@
+{
+  "name": "Slack to AI Promo Generator - Complete Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack-promo-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "bef16b37-0313-417c-8443-33f175984eed",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        -272
+      ],
+      "webhookId": "b8ab7564-5cab-4f57-a5be-5b2edc691742",
+      "notes": "Receives Slack events. Copy this webhook URL to your Slack app Event Subscriptions."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Challenge Handler & Event Parser\nconst body = $input.first().json.body || $input.first().json;\n\n// Handle Slack URL verification challenge\nif (body.type === 'url_verification') {\n  return [{ json: { challenge: body.challenge, isChallenge: true } }];\n}\n\n// Parse event data\nconst event = body.event || {};\n\nreturn [{\n  json: {\n    isChallenge: false,\n    eventType: event.type,\n    text: event.text || '',\n    user: event.user,\n    channel: event.channel,\n    ts: event.ts\n  }\n}];"
+      },
+      "id": "35727177-ca1a-4fb4-8c7d-aa709c1f8963",
+      "name": "Challenge Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        -272
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { challenge: $json.challenge } }}",
+        "options": {}
+      },
+      "id": "23f37a50-f733-4607-b579-6d568ab2fa2c",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.isChallenge }}",
+              "value2": false
+            }
+          ],
+          "string": [
+            {
+              "value1": "={{ $json.eventType }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d8fe8b1e-36db-4ac8-8a36-a6ee0e721f4a",
+      "name": "Is Real Message?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        -272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Intent & Parameters\nconst text = $input.first().json.text;\nconst channel = $input.first().json.channel;\nconst user = $input.first().json.user;\n\n// Remove bot mention from text (e.g., <@U12345>)\nconst cleanText = text.replace(/<@[A-Z0-9]+>/g, '').trim();\n\nreturn [{\n  json: {\n    promotionalText: cleanText,\n    channel: channel,\n    requestedBy: user,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "b52d1c52-6612-4992-af50-683c8953af0e",
+      "name": "Extract Intent & Parameters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ✅ Parse GPT Response Safely\n\nlet response;\n\n// Safely extract response text\ntry {\n  response = $input.first().json.choices?.[0]?.message?.content || $input.first().json.text || '';\n} catch (error) {\n  response = '';\n}\n\n// Ensure it's a string\nif (typeof response !== 'string') {\n  response = JSON.stringify(response);\n}\n\nlet jsonStr = response;\n\n// ✅ Handle markdown code blocks like ```json ... ```\nif (response && response.includes('```json')) {\n  jsonStr = response.split('```json')[1]?.split('```')[0]?.trim();\n} else if (response && response.includes('```')) {\n  jsonStr = response.split('```')[1]?.trim();\n}\n\nlet parsed = {};\ntry {\n  parsed = JSON.parse(jsonStr);\n} catch (error) {\n  // if it’s not valid JSON, just keep it as plain text\n  parsed = { text: jsonStr };\n}\n\n// ✅ Pass along useful context from earlier nodes\nreturn [\n  {\n    json: {\n      ...parsed,\n      channel: $('Extract Intent & Parameters').first().json.channel,\n      requestedBy: $('Extract Intent & Parameters').first().json.requestedBy,\n      originalText: $('Extract Intent & Parameters').first().json.promotionalText\n    }\n  }\n];\n"
+      },
+      "id": "cf1da45b-c057-40b2-b399-9714962b039c",
+      "name": "Parse GPT Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Image from Imagen Response\nconst response = $input.first().json;\n\nif (!response.predictions || !response.predictions[0]) {\n  throw new Error('No image generated from Imagen API');\n}\n\nconst imageBase64 = response.predictions[0].bytesBase64Encoded;\n\n// Pass through context from previous nodes\nreturn [{\n  json: {\n    imageBase64: imageBase64,\n    imageMimeType: 'image/png',\n    channel: $('Parse GPT Response').first().json.channel,\n    requestedBy: $('Parse GPT Response').first().json.requestedBy,\n    hookStatement: $('Parse GPT Response').first().json.hookStatement,\n    tamilHook: $('Parse GPT Response').first().json.tamilHook\n  }\n}];"
+      },
+      "id": "86575fa9-bd0e-4222-a926-77ee6b32952b",
+      "name": "Extract Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://us-central1-aiplatform.googleapis.com/v1/projects/gen-lang-client-0793106415/locations/us-central1/publishers/google/models/veo-3.1-generate-preview:predictLongRunning",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"instances\": [\n    {\n      \"prompt\": $json.text\n    }\n  ],\n  \"parameters\": {\n    \"sampleCount\": 1,\n    \"durationSeconds\": 8,\n    \"aspectRatio\": \"16:9\"\n  }\n}\n}}",
+        "options": {}
+      },
+      "id": "7d59b4f4-0b29-4e07-8761-3828507f1882",
+      "name": "Veo 3.1 - Start Video Generation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        608,
+        -176
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "N2susDrLlDBnuezb",
+          "name": "Google Service Account"
+        }
+      },
+      "notes": "Starts async video generation. Returns operation name for polling."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Operation Name from Veo Response\nconst response = $input.first().json;\n\n// The operation name is used to poll for completion\nconst operationName = response.name || response.operationName;\n\nif (!operationName) {\n  throw new Error('No operation name returned from Veo API');\n}\n\nreturn [{\n  json: {\n    operationName: operationName,\n    channel: $('Parse GPT Response').first().json.channel,\n    requestedBy: $('Parse GPT Response').first().json.requestedBy\n  }\n}];"
+      },
+      "id": "8d43fefc-fc76-471e-aaed-a1675aeb1ff4",
+      "name": "Extract Operation Name",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "8265ed51-bdf0-4340-84b9-901d1cb4fd62",
+      "name": "Wait 30 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1008,
+        -176
+      ],
+      "webhookId": "9cceda04-5a07-47b7-a18e-40f606d915b4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://us-central1-aiplatform.googleapis.com/v1/projects/gen-lang-client-0793106415/locations/us-central1/publishers/google/models/veo-3.1-generate-preview:fetchPredictOperation",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"operationName\": \"{{ $json.operationName || $json.name }}\"\n}",
+        "options": {}
+      },
+      "id": "e05945e6-fe72-4cc9-a74e-aeaefb7b65dd",
+      "name": "Check Operation Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1216,
+        -176
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "N2susDrLlDBnuezb",
+          "name": "Google Service Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "126dbc39-0887-4eef-a7be-6d337e3a3cce",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": "=true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "c4baf69f-a134-4960-b8a0-528e5382c223",
+      "name": "Is Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Video from completed operation\nconst response = $input.first().json;\n\n// When done=true, video is in response.response.videos\nif (!response.done) {\n    throw new Error('Operation not complete yet');\n}\n\nconst videoData = response.response;\nif (!videoData || !videoData.videos || !videoData.videos[0]) {\n    throw new Error('No video in response: ' + JSON.stringify(response).substring(0, 500));\n}\n\nconst video = videoData.videos[0];\n\nreturn [{\n    json: {\n        videoBase64: video.bytesBase64Encoded,\n        videoMimeType: video.mimeType || 'video/mp4',\n        operationName: response.name\n    }\n}];"
+      },
+      "id": "e9712b5e-a191-47b4-8b6f-7917421e88c0",
+      "name": "Extract Video",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "eb793d59-3067-4a78-b915-34097187af03",
+      "name": "Merge Image & Video",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1792,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "=https://docs.google.com/spreadsheets/d/1htyWZLXEkLBq5J6mr_xNKH0qMioPgzaNc3iNdWtJKNc/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Automated_Email",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1htyWZLXEkLBq5J6mr_xNKH0qMioPgzaNc3iNdWtJKNc/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "70f17a82-e5bc-4595-9e53-9db77b554627",
+      "name": "Get Customer Emails",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        2016,
+        -176
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "HXQN5ZAXk9sdYiVT",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Configure with your Google Sheet containing: Name, Email, Company, promotional_email_sent columns"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "2e891433-1649-4de8-9a54-f4c62880c63f",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2208,
+        -176
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "=Special Promotion - {{ $json.hookStatement || 'Exclusive Offer' }}!",
+        "message": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; }\n    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white; }\n    .header h1 { margin: 0; font-size: 28px; }\n    .hook { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; font-size: 18px; font-weight: bold; color: #856404; }\n    .content { padding: 25px; background: #ffffff; }\n    .poster-section { text-align: center; margin: 20px 0; }\n    .poster-img { max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }\n    .video-section { background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0; }\n    .footer { background: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #888; }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h1>🎉 Special Promotion - Exclusive Offer!</h1>\n  </div>\n  <div class=\"content\">\n    <div class=\"hook\">\n      🔥 Limited Time Offer: Get 50% OFF on our Premium Plan! Don't miss out!\n    </div>\n    \n    <p>Dear <strong>{{ $json.Name }}</strong>,</p>\n    <p>We have an exclusive offer just for you from <strong>{{ $json.Company }}</strong>!</p>\n    \n    <div class=\"poster-section\">\n      <h3>🖼️ Your Exclusive Promotional Poster</h3>\n      <img class=\"poster-img\" src=\"data:{{ $json.imageMimeType }};base64,{{ $json.imageBase64 }}\" alt=\"Promotional Poster\" />\n    </div>\n    \n    <div class=\"video-section\">\n      <h3>🎬 Watch Our 8-Second Video!</h3>\n      <p>We've attached a special promotional video to this email.</p>\n      <p><strong>📎 See attachment: promotional_video.mp4</strong></p>\n    </div>\n    \n    <p>Don't miss out on this amazing opportunity!</p>\n    <p>Best regards,<br>The {{ $json.Company }} Team</p>\n  </div>\n  <div class=\"footer\">\n    <p>© 2025 {{ $json.Company }} | You received this because you're a valued {{ $json.Plan }} customer</p>\n  </div>\n</body>\n</html>",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "=video"
+              }
+            ]
+          }
+        }
+      },
+      "id": "458b47b5-6446-47bb-a3ad-3b4f7f19f209",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -160
+      ],
+      "webhookId": "1093f8e5-a829-4f5c-bd1b-545d6b153470",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "wOnOoNI08n1lJdvx",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Configure Gmail OAuth2 credentials. Image attached as inline with cid:promo-poster"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1htyWZLXEkLBq5J6mr_xNKH0qMioPgzaNc3iNdWtJKNc/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Automated_Email",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1htyWZLXEkLBq5J6mr_xNKH0qMioPgzaNc3iNdWtJKNc/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $('Split In Batches').item.json.Email }}",
+            "promotional_email_sent": "=sent",
+            "sent_timestamp": "={{ $now.format('DD-HH:mm') }} "
+          },
+          "matchingColumns": [
+            "Email"
+          ],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Plan",
+              "displayName": "Plan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "promotional_email_sent",
+              "displayName": "promotional_email_sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sent_timestamp",
+              "displayName": "sent_timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "a66c3f97-625c-42fa-9161-cf17f0898662",
+      "name": "Update Sheet Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        2816,
+        -160
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "HXQN5ZAXk9sdYiVT",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"model\": \"gpt-4o-mini\",\n  \"temperature\": 0.5,\n  \"max_tokens\": 512,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an AI assistant that generates marketing content.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Create a 27% discount message for software annual subscription.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        224,
+        -272
+      ],
+      "id": "ccd5170a-1749-435a-ad43-40fae29328f7",
+      "name": "Prompt Generation",
+      "credentials": {
+        "openAiApi": {
+          "id": "Rz1NtE3xbXUfMbkX",
+          "name": "OpenAI - API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get data from previous nodes\nconst customerData = $input.item.json;\nconst mergeData = $('Merge Image & Video').item.json;\n\n// Create binary data for video attachment\nconst videoBuffer = Buffer.from(mergeData.videoBase64, 'base64');\n\nreturn {\n  json: {\n    ...customerData,\n    imageBase64: mergeData.imageBase64,\n    imageMimeType: mergeData.imageMimeType,\n    videoMimeType: mergeData.videoMimeType\n  },\n  binary: {\n    video: {\n      data: mergeData.videoBase64,\n      mimeType: mergeData.videoMimeType || 'video/mp4',\n      fileName: 'promotional_video.mp4'\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        -160
+      ],
+      "id": "bbd6e2b1-ca65-4af9-ab15-e5683c741f82",
+      "name": "Prepare Email Attachments"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Get the merged data - only run once\nconst mergeData = $('Merge Image & Video').first().json;\n\n// Return single item with both binary files\nreturn {\n  json: {\n    channel: mergeData.channel,\n    requestedBy: mergeData.requestedBy,\n    message: \"✅ Automation Executed Successfully!\\n\\n🖼️ Promotional poster generated\\n🎬 8-second video created\\n📧 Emails sent to all customers\\n\\nRequested by: <@\" + mergeData.requestedBy + \">\"\n  },\n  binary: {\n    poster: {\n      data: mergeData.imageBase64,\n      mimeType: mergeData.imageMimeType || 'image/png',\n      fileName: 'promotional_poster.png'\n    },\n    video: {\n      data: mergeData.videoBase64,\n      mimeType: mergeData.videoMimeType || 'video/mp4',\n      fileName: 'promotional_video.mp4'\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -544
+      ],
+      "id": "f45003e3-7a19-4886-a8fc-0a458ef73a63",
+      "name": "Convert Image & Video to Binary"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "file",
+        "binaryPropertyName": "=poster",
+        "options": {
+          "channelId": "C0A1VGG9K61",
+          "initialComment": "=✅ *Automation Executed Successfully!*\n\n🖼️ Promotional poster attached above\n🎬 Video sent via email to all customers\n📧 Emails sent: 5\n\nRequested by: <@{{ $json.requestedBy }}>"
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        2832,
+        -640
+      ],
+      "id": "32d43e2d-0b0a-426f-8563-159a98b25280",
+      "name": "Upload a file",
+      "webhookId": "fabf5eef-f45c-48a5-8f89-4fc4097fd8f7",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "dvhuRri63I6otKbp",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://slack.com/api/files.uploadV2",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackOAuth2Api",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "channels",
+              "value": "={{$json.channel}}"
+            },
+            {
+              "name": "file",
+              "value": "video"
+            },
+            {
+              "name": "initial_comment",
+              "value": "Here’s the new promo video!"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2832,
+        -448
+      ],
+      "id": "67302421-e5f5-4d57-817c-2d3d9cbc82a8",
+      "name": "Upload Video 2 Slack",
+      "alwaysOutputData": true,
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "dvhuRri63I6otKbp",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://us-central1-aiplatform.googleapis.com/v1/projects/gen-lang-client-0793106415/locations/us-central1/publishers/google/models/imagen-3.0-generate-001:predict",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "contentType": "=json",
+        "specifyBody": "=json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify({\n  instances: [\n    { prompt: $json.text }\n  ],\n  parameters: {\n    sampleCount: 1,\n    aspectRatio: \"1:1\"\n  }\n}) }}",
+        "options": {}
+      },
+      "id": "bf6a2ee5-faf2-4260-b07c-7d3a7aaeb1e3",
+      "name": "Imagen 4 - Generate Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        640,
+        -448
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "N2susDrLlDBnuezb",
+          "name": "Google Service Account"
+        }
+      },
+      "notes": "Replace YOUR_PROJECT_ID with your Google Cloud project ID. Requires Vertex AI API enabled."
+    },
+    {
+      "parameters": {
+        "content": "User Input from Slack gets picked up here "
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -656,
+        -480
+      ],
+      "typeVersion": 1,
+      "id": "b1e44d52-7c76-42ef-a329-0b47ff4f68a5",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "The User Input is now converted to a prompt using ChatGPT for Image and Video creation."
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        48,
+        -480
+      ],
+      "typeVersion": 1,
+      "id": "1d86fb7b-d69c-4f73-9097-36efcfc13d71",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "Using Gemini - Imagen 4 picks the prompt and generates an image"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        560,
+        -656
+      ],
+      "typeVersion": 1,
+      "id": "7dbaedae-89ca-471c-82a9-5029fa6fee9c",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Using Veo 3.1 -- picks the video generator prompt and generates the 8 sec video"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        544,
+        48
+      ],
+      "typeVersion": 1,
+      "id": "1babeb3a-1307-477f-b0b1-e1dbdf71895c",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "Given a wait time for the video generation that happens in loop till it succeeds"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1088,
+        64
+      ],
+      "typeVersion": 1,
+      "id": "a443873c-de9b-43d2-b45a-7324733a7e3f",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "The Image and Video are now generated and merged together to notify"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1776,
+        -448
+      ],
+      "typeVersion": 1,
+      "id": "3e12df8e-6851-4364-b05b-c85962644d39",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "1. Picks the customer email details from Gsheet\n2. Prepare the email content and attachment and image as a inline message\n3. Triggers the email to those customer part of Gsheet\n4. On successful send -- update bac in gheet on the date and timestamp ( in this case 5 customers got the mail)",
+        "width": 800
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2176,
+        64
+      ],
+      "typeVersion": 1,
+      "id": "d6f1a11a-8edc-4cbc-9019-c2849c26c15f",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "The image and video are clubbed to post in slack for the admins/ Owner'swho raised that reques as a Acknowledgement. (Notification triggers only once to the slack)",
+        "width": 800
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2224,
+        -832
+      ],
+      "typeVersion": 1,
+      "id": "1efb01b7-8ad7-43a0-8991-db843f59b037",
+      "name": "Sticky Note7"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8n.srv1173555.hstgr.cloud",
+            "user-agent": "Slackbot 1.0 (+https://api.slack.com/robots)",
+            "content-length": "2153",
+            "accept": "*/*",
+            "accept-encoding": "gzip,deflate",
+            "content-type": "application/json",
+            "x-forwarded-for": "44.204.83.24",
+            "x-forwarded-host": "n8n.srv1173555.hstgr.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "1cc0c6576813",
+            "x-real-ip": "44.204.83.24",
+            "x-slack-request-timestamp": "1765602880",
+            "x-slack-signature": "v0=3d620d61bf9d120a5ec07b33a7ca2c5c45194125d2c119efefd72d1cc50b04b2"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "token": "xXnwO4X7Zb4PPQFaCMxNIUCK",
+            "team_id": "T0A1VGDKB2R",
+            "context_team_id": "T0A1VGDKB2R",
+            "context_enterprise_id": null,
+            "api_app_id": "A0A1ZG8UCCS",
+            "event": {
+              "type": "message",
+              "user": "U0A2T8Y257A",
+              "ts": "1765602880.031939",
+              "bot_id": "B0A235GN16Y",
+              "app_id": "A0A1ZG8UCCS",
+              "text": ":white_check_mark: *Automation Executed Successfully!*\n\n:camera_with_flash: Promotional poster generated\n:clapper: 8-second video created\n:e-mail: Emails sent: *1/1*\n\n_Requested by <@U0A2T8Y257A>_",
+              "team": "T0A1VGDKB2R",
+              "bot_profile": {
+                "id": "B0A235GN16Y",
+                "deleted": false,
+                "name": "SubTrackAI",
+                "updated": 1765031930,
+                "app_id": "A0A1ZG8UCCS",
+                "icons": {
+                  "image_36": "https://a.slack-edge.com/80588/img/plugins/app/bot_36.png",
+                  "image_48": "https://a.slack-edge.com/80588/img/plugins/app/bot_48.png",
+                  "image_72": "https://a.slack-edge.com/80588/img/plugins/app/service_72.png"
+                },
+                "team_id": "T0A1VGDKB2R"
+              },
+              "blocks": [
+                {
+                  "type": "rich_text",
+                  "block_id": "Ywa",
+                  "elements": [
+                    {
+                      "type": "rich_text_section",
+                      "elements": [
+                        {
+                          "type": "emoji",
+                          "name": "white_check_mark",
+                          "unicode": "2705"
+                        },
+                        {
+                          "type": "text",
+                          "text": " "
+                        },
+                        {
+                          "type": "text",
+                          "text": "Automation Executed Successfully!",
+                          "style": {
+                            "bold": true
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "text": "\n\n"
+                        },
+                        {
+                          "type": "emoji",
+                          "name": "camera_with_flash",
+                          "unicode": "1f4f8"
+                        },
+                        {
+                          "type": "text",
+                          "text": " Promotional poster generated\n"
+                        },
+                        {
+                          "type": "emoji",
+                          "name": "clapper",
+                          "unicode": "1f3ac"
+                        },
+                        {
+                          "type": "text",
+                          "text": " 8-second video created\n"
+                        },
+                        {
+                          "type": "emoji",
+                          "name": "e-mail",
+                          "unicode": "1f4e7"
+                        },
+                        {
+                          "type": "text",
+                          "text": " Emails sent: "
+                        },
+                        {
+                          "type": "text",
+                          "text": "1/1",
+                          "style": {
+                            "bold": true
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "text": "\n\n"
+                        },
+                        {
+                          "type": "text",
+                          "text": "Requested by ",
+                          "style": {
+                            "italic": true
+                          }
+                        },
+                        {
+                          "type": "user",
+                          "user_id": "U0A2T8Y257A",
+                          "style": {
+                            "italic": true
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "channel": "C0A1VGG9K61",
+              "event_ts": "1765602880.031939",
+              "channel_type": "channel"
+            },
+            "type": "event_callback",
+            "event_id": "Ev0A3G7SJHRA",
+            "event_time": 1765602880,
+            "authorizations": [
+              {
+                "enterprise_id": null,
+                "team_id": "T0A1VGDKB2R",
+                "user_id": "U0A1T5A4WV9",
+                "is_bot": true,
+                "is_enterprise_install": false
+              }
+            ],
+            "is_ext_shared_channel": false,
+            "event_context": "4-eyJldCI6Im1lc3NhZ2UiLCJ0aWQiOiJUMEExVkdES0IyUiIsImFpZCI6IkEwQTFaRzhVQ0NTIiwiY2lkIjoiQzBBMVZHRzlLNjEifQ"
+          },
+          "webhookUrl": "https://n8n.srv1173555.hstgr.cloud/webhook/slack-promo-webhook",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Challenge Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Challenge Handler": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is Real Message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Real Message?": {
+      "main": [
+        [
+          {
+            "node": "Extract Intent & Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Intent & Parameters": {
+      "main": [
+        [
+          {
+            "node": "Prompt Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse GPT Response": {
+      "main": [
+        [
+          {
+            "node": "Imagen 4 - Generate Image",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Veo 3.1 - Start Video Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Image": {
+      "main": [
+        [
+          {
+            "node": "Merge Image & Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Veo 3.1 - Start Video Generation": {
+      "main": [
+        [
+          {
+            "node": "Extract Operation Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Operation Name": {
+      "main": [
+        [
+          {
+            "node": "Wait 30 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Check Operation Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Operation Status": {
+      "main": [
+        [
+          {
+            "node": "Is Done?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Done?": {
+      "main": [
+        [
+          {
+            "node": "Extract Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 30 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Video": {
+      "main": [
+        [
+          {
+            "node": "Merge Image & Video",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Image & Video": {
+      "main": [
+        [
+          {
+            "node": "Get Customer Emails",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert Image & Video to Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Customer Emails": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Prepare Email Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheet Status": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt Generation": {
+      "main": [
+        [
+          {
+            "node": "Parse GPT Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email Attachments": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Image & Video to Binary": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upload Video 2 Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a file": {
+      "main": [
+        []
+      ]
+    },
+    "Imagen 4 - Generate Image": {
+      "main": [
+        [
+          {
+            "node": "Extract Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "8cfb73b5-38f5-4848-bebc-29fe40fa0cb4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1c021751d8b7ee3f693154e56c72d42999b2e4331f894983e0858e5562db5813"
+  },
+  "id": "0cFgLxacLmYyXfkZ",
+  "tags": []
+}
