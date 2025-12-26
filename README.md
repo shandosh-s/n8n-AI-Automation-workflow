@@ -61,11 +61,17 @@ No-code / low-code workflow orchestration
 <img width="1628" height="1512" alt="image" src="https://github.com/user-attachments/assets/615ffe2b-91a1-47c9-b843-5c9e69859555" />
 
 Output: 
+
 Image: 
+
 <img width="720" height="720" alt="image" src="https://github.com/user-attachments/assets/e97380b7-6608-4392-be79-7ed64bc49eb2" />
 
 Video:
-https://github.com/user-attachments/assets/fd7c5de5-2ffd-4ead-b446-9e8b733d73cb
+
+
+https://github.com/user-attachments/assets/891c062e-0f76-409d-858d-23ad34473120
+
+
 
 **Project 2: N8N based customer email**
 <img width="1801" height="1105" alt="image" src="https://github.com/user-attachments/assets/c638d8e9-2bce-4f9b-bebb-fe426dda8b95" />
