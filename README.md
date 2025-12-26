@@ -1,5 +1,7 @@
 🚀 **AI-Driven Marketing Automation with n8n**
+
 **Project 3:**
+
 **Overview**
 This project demonstrates an end-to-end AI-powered marketing automation workflow built using n8n.
 When a message is posted in a Slack channel (e.g., “Create 30% discount offer”), the workflow automatically generates marketing assets and distributes them across channels.
